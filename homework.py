@@ -1,3 +1,4 @@
+from contextlib import suppress
 from http import HTTPStatus
 import logging
 import os
@@ -130,26 +131,19 @@ def main():
                 send_message(bot, message)
                 old_status_message = message
                 timestamp = response.get('current_date', timestamp)
+            else:
+                logging.debug('Новых обновлений нет.')
 
         except (telebot.apihelper.ApiException,
                 requests.exceptions.RequestException) as error:
             logging.error(error)
 
-        except ConnectionError as connection_error:
-            logging.error(connection_error)
-
-        except KeyError as key_error:
-            logging.error(key_error)
-
-        except TypeError as type_error:
-            logging.error(type_error)
-
         except Exception as error:
             logging.exception('Сбой в работе программы: %s', error)
             if old_status_message != message:
-                send_message(bot, message)
+                with suppress(Exception):
+                    send_message(bot, message)
                 old_status_message = message
-                timestamp = response.get('current_date', timestamp)
 
         finally:
             time.sleep(RETRY_PERIOD)
