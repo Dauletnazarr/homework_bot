@@ -10,6 +10,13 @@ from dotenv import load_dotenv
 from telebot import TeleBot
 import telebot
 
+
+class InvalidResponseStatus(Exception):
+    """Исключение для неверного статус-кода от API."""
+
+    pass
+
+
 load_dotenv()
 
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
@@ -65,7 +72,7 @@ def get_api_answer(timestamp):
         ) from error
 
     if response.status_code != HTTPStatus.OK:
-        raise ConnectionError(
+        raise InvalidResponseStatus(
             f'API вернул ошибку: {response.status_code}.'
             f'URL: {ENDPOINT}, Параметры: {{from_date: {timestamp}}}'
         )
