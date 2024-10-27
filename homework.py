@@ -6,16 +6,11 @@ from contextlib import suppress
 from http import HTTPStatus
 
 import requests
+import telebot
 from dotenv import load_dotenv
 from telebot import TeleBot
-import telebot
 
-
-class InvalidResponseStatus(Exception):
-    """Исключение для неверного статус-кода от API."""
-
-    pass
-
+from exceptions import InvalidResponseStatus
 
 load_dotenv()
 
@@ -47,7 +42,7 @@ def check_tokens():
         missing = ", ".join(missing_tokens)
         message = f'Отсутствуют следующие переменные окружения: {missing}'
         logging.critical(message)
-        raise Exception(message)
+        raise ValueError(message)
 
 
 def send_message(bot, message):
