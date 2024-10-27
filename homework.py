@@ -1,9 +1,9 @@
-from contextlib import suppress
-from http import HTTPStatus
 import logging
 import os
 import sys
 import time
+from contextlib import suppress
+from http import HTTPStatus
 
 import requests
 from dotenv import load_dotenv
@@ -16,7 +16,6 @@ PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-DATE_FROM = 7 * 24 * 60 * 60
 RETRY_PERIOD = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
@@ -39,11 +38,9 @@ def check_tokens():
 
     if missing_tokens:
         missing = ", ".join(missing_tokens)
-        logging.critical(
-            'Отсутствуют следующие переменные окружения: %s', missing
-        )
-        sys.exit('Отсутствуют необходимые переменные окружения.'
-                 'Программа завершена.')
+        message = f'Отсутствуют следующие переменные окружения: {missing}'
+        logging.critical(message)
+        raise Exception(message)
 
 
 def send_message(bot, message):
@@ -62,10 +59,16 @@ def get_api_answer(timestamp):
             params={'from_date': timestamp}, timeout=10
         )
     except requests.RequestException as error:
-        raise ConnectionError(f'Ошибка запроса к API: {error}') from error
+        raise ConnectionError(
+            f'Ошибка запроса к API: {error}.'
+            f'URL: {ENDPOINT}, Параметры: {{from_date: {timestamp}}}'
+        ) from error
 
     if response.status_code != HTTPStatus.OK:
-        raise ConnectionError(f'API вернул ошибку: {response.status_code}')
+        raise ConnectionError(
+            f'API вернул ошибку: {response.status_code}.'
+            f'URL: {ENDPOINT}, Параметры: {{from_date: {timestamp}}}'
+        )
 
     logging.debug('Ответ от API успешно получен.')
     return response.json()
@@ -79,13 +82,15 @@ def check_response(response):
     logging.debug('Начало проверки ответа API на наличие необходимых ключей.')
     if not isinstance(response, dict):
         raise TypeError(
-            'Ответ API должен быть словарем, но получен другой тип данных')
+            'Ответ API должен быть словарем,'
+            f'но получен другой тип данных: {type(response)}')
     if 'homeworks' not in response:
         raise KeyError('Ключ `homeworks` отсутствует в ответе API')
-    if not isinstance(response['homeworks'], list):
+    homeworks = response["homeworks"]
+    if not isinstance(homeworks, list):
         raise TypeError(
-            f'В ответе API домашки под ключом "homeworks" данные приходят не'
-            f' в виде списка, а в виде {type(response["homeworks"]).__name__}'
+            'В ответе API домашки под ключом "homeworks" данные приходят не'
+            f' в виде списка, а в виде {type(homeworks).__name__}'
         )
     logging.debug('Проверка ответа API завершена.')
 
@@ -100,7 +105,8 @@ def parse_status(homework):
     homework_name = homework['homework_name']
     status = homework['status']
     if status not in HOMEWORK_VERDICTS:
-        raise ValueError('Такой "status" в "HOMEWORK_VERDICTS" не найден.')
+        raise ValueError(f'Такой "status"({status}) в "HOMEWORK_VERDICTS"'
+                         'не найден.')
     verdict = HOMEWORK_VERDICTS[status]
     logging.debug('Проверка статуса успешно завершена.')
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
@@ -110,8 +116,7 @@ def main():
     """Основная логика работы бота."""
     check_tokens()
     bot = TeleBot(token=TELEGRAM_TOKEN)
-    current_time = int(time.time())
-    timestamp = current_time - DATE_FROM
+    timestamp = int(time.time())
     old_status_message = ''
 
     while True:
@@ -120,7 +125,7 @@ def main():
             check_response(response)
             homeworks = response['homeworks']
 
-            if len(response) == 0:
+            if not response:
                 logging.debug('Новых обновлений нет.')
                 continue
 
@@ -139,11 +144,13 @@ def main():
             logging.error(error)
 
         except Exception as error:
-            logging.exception('Сбой в работе программы: %s', error)
+            message = f'Сбой в работе программы: {error}'
+            logging.exception(message)
             if old_status_message != message:
-                with suppress(Exception):
+                with suppress(telebot.apihelper.ApiException,
+                              requests.exceptions.RequestException):
                     send_message(bot, message)
-                old_status_message = message
+                    old_status_message = message
 
         finally:
             time.sleep(RETRY_PERIOD)
